@@ -35,6 +35,25 @@ class VideoCameraSource(CameraSource):
                 break
 
 
+class ImageCameraSource(CameraSource):
+    def __init__(self, path: str, loop: bool = True) -> None:
+        self.path = path
+        self.loop = loop
+        self.logger = setup_json_logger("image_camera")
+
+    def __iter__(self) -> Iterator:
+        while True:
+            frame = cv2.imread(str(Path(self.path)))
+            if frame is None:
+                self.logger.error(f"Unable to open image source: {self.path}")
+                break
+
+            yield frame
+
+            if not self.loop:
+                break
+
+
 class WebcamCameraSource(CameraSource):
     def __init__(self, index: int = 0) -> None:
         self.index = index

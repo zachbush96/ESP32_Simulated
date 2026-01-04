@@ -1,5 +1,5 @@
 # Model selection and paths
 vision:
-  detector: stub  # options: stub, onnx, custom
+  detector: smolvlm  # options: stub, onnx, smolvlm
   onnx_model_path: models/detector.onnx
   confidence_threshold: 0.4

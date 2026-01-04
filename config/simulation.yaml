@@ -1,7 +1,7 @@
 # Simulation-specific configuration
 camera:
-  source_type: video  # options: video, images, webcam
-  source_path: data/sample.mp4  # used when source_type is video
+  source_type: image  # options: video, image, webcam
+  source_path: data/cat.jpg
   loop: true
   fps: 15
 failure_injection:
