@@ -1,0 +1,10 @@
+# Simulation-specific configuration
+camera:
+  source_type: video  # options: video, images, webcam
+  source_path: data/sample.mp4  # used when source_type is video
+  loop: true
+  fps: 15
+failure_injection:
+  drop_frame_chance: 0.05
+  no_detection_chance: 0.1
+  lost_target_chance: 0.05

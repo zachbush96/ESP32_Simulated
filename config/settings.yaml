@@ -1,0 +1,11 @@
+# Global settings for simulation vs real robot
+mode: simulation  # valid values: simulation, real
+logging:
+  level: INFO
+  format: jsonl
+control:
+  linear_limit: 0.3   # meters per second
+  angular_limit: 1.0  # radians per second
+visualization:
+  enabled: true
+  window_name: "RobotSim"
