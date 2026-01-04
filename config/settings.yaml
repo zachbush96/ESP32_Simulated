@@ -7,5 +7,5 @@ control:
   linear_limit: 0.3   # meters per second
   angular_limit: 1.0  # radians per second
 visualization:
-  enabled: true
+  enabled: false
   window_name: "RobotSim"

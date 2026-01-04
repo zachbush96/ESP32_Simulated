@@ -29,9 +29,14 @@ class BehaviorStateMachine:
                 self._transition(SEARCH)
             return BehaviorDecision(state=self.state, target_id=None)
 
+        # Naive: Pursue the first track found
+        # In a real system we would filter by label (e.g., only pursue 'cat')
         target_track = tracks[0]
+
+        # If we found a target, we switch to PURSUE
         if self.state != PURSUE:
             self._transition(PURSUE)
+
         return BehaviorDecision(state=self.state, target_id=target_track.id)
 
     def stop(self) -> BehaviorDecision:

@@ -3,8 +3,9 @@ from typing import Iterable
 
 import cv2
 
+from src.behavior.exploration import ExplorationBehavior
 from src.behavior.policies import BehaviorPolicies
-from src.behavior.state_machine import BehaviorStateMachine
+from src.behavior.state_machine import BehaviorStateMachine, SEARCH
 from src.control.motion_planner import MotionPlanner
 from src.control.safety import SafetyController
 from src.core.config_loader import load_config
@@ -16,8 +17,8 @@ from src.simulation.failure_injection import (
     maybe_remove_detections,
 )
 from src.tracking.tracker import Tracker
-from src.vision.camera import CameraSource, VideoCameraSource, WebcamCameraSource
-from src.vision.detector import Detector, StubDetector
+from src.vision.camera import CameraSource, ImageCameraSource, VideoCameraSource, WebcamCameraSource
+from src.vision.detector import Detector, StubDetector, SmolVLMDetector
 from src.vision.visualizer import overlay_detections
 
 
@@ -37,6 +38,8 @@ class SimulationWorld:
         )
         self.robot_api = get_robot_api(config)
         self.safety = SafetyController(self.robot_api)
+        # We pass robot_api to exploration behavior so it can command the robot directly via tools
+        self.exploration = ExplorationBehavior(self.robot_api)
 
     def run(self) -> None:
         failure_cfg = self.config.get("simulation", {}).get("failure_injection", {})
@@ -59,9 +62,15 @@ class SimulationWorld:
 
                 tracks = self.tracker.update(detections)
                 decision = self.behavior.update(tracks)
-                motion_request = self.policies.map_decision_to_motion(decision)
-                command = self.motion_planner.plan(motion_request)
-                self.robot_api.post_motion_drive(command)
+
+                if decision.state == SEARCH:
+                    # In SEARCH state, we let the Exploration/VLM logic take over
+                    self.exploration.update(frame)
+                else:
+                    # In PURSUE/IDLE state, we follow the deterministic policy
+                    motion_request = self.policies.map_decision_to_motion(decision)
+                    command = self.motion_planner.plan(motion_request)
+                    self.robot_api.post_motion_drive(command)
 
                 if visualize:
                     overlay_detections(frame, detections, decision.state)
@@ -90,6 +99,8 @@ def build_simulation_from_config() -> SimulationWorld:
     source_type = camera_cfg.get("source_type", "video")
     if source_type == "webcam":
         camera = WebcamCameraSource(index=0)
+    elif source_type == "image":
+        camera = ImageCameraSource(path=camera_cfg.get("source_path", ""), loop=camera_cfg.get("loop", True))
     else:
         camera = VideoCameraSource(path=camera_cfg.get("source_path", ""), loop=camera_cfg.get("loop", True))
 
@@ -97,6 +108,8 @@ def build_simulation_from_config() -> SimulationWorld:
     detector: Detector
     if detector_choice == "stub":
         detector = StubDetector()
+    elif detector_choice == "smolvlm":
+        detector = SmolVLMDetector()
     else:
         detector = StubDetector()
 
