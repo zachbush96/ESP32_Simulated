@@ -2,22 +2,33 @@
 #include <WebServer.h>
 #include "esp_camera.h"
 #include <ctype.h>
+#include "driver/ledc.h"
 
 // =====================
 // WIFI CONFIG
 // =====================
-const char* WIFI_SSID = "YOUR_WIFI";
-const char* WIFI_PASS = "YOUR_PASSWORD";
+const char* WIFI_SSID = "InsightBush1 2.5";
+const char* WIFI_PASS = "GoDaddy500";
 
 bool cameraReady = false;
 
 // =====================
-// MOTOR PINS (PLACEHOLDERS)
+// MOTOR PINS (STOCK FIRMWARE)
 // =====================
-#define MOTOR_L_FWD 12
-#define MOTOR_L_REV 13
-#define MOTOR_R_FWD 14
-#define MOTOR_R_REV 15
+#define MOTOR_LEFT_M0 13
+#define MOTOR_LEFT_M1 12
+#define MOTOR_RIGHT_M0 14
+#define MOTOR_RIGHT_M1 15
+
+#define LED_PIN 4
+
+const int kMotorPwmFrequency = 2000;
+const int kMotorPwmResolution = 8;
+const int kMotorLeftM0Channel = LEDC_CHANNEL_4;
+const int kMotorLeftM1Channel = LEDC_CHANNEL_5;
+const int kMotorRightM0Channel = LEDC_CHANNEL_6;
+const int kMotorRightM1Channel = LEDC_CHANNEL_7;
+int motorSpeed = 150;
 
 // =====================
 // SERVER
@@ -66,11 +77,16 @@ String frameSizeToString(framesize_t frameSize) {
   }
 }
 
+void setMotorDuty(ledc_channel_t channel, uint32_t duty) {
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, channel, duty);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, channel);
+}
+
 void resetMotorOutputs() {
-  digitalWrite(MOTOR_L_FWD, LOW);
-  digitalWrite(MOTOR_L_REV, LOW);
-  digitalWrite(MOTOR_R_FWD, LOW);
-  digitalWrite(MOTOR_R_REV, LOW);
+  setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM0Channel), 0);
+  setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM1Channel), 0);
+  setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM0Channel), 0);
+  setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM1Channel), 0);
 }
 
 void stopMotors() {
@@ -116,6 +132,11 @@ bool extractJsonFloat(const String& body, const char* key, float& valueOut) {
   return true;
 }
 
+uint32_t percentToDuty(float percent) {
+  percent = max(0.0f, min(percent, 100.0f));
+  return static_cast<uint32_t>(map(static_cast<int>(percent), 0, 100, 0, 255));
+}
+
 void driveDifferential(float linear, float angular) {
   const float DEADZONE = 0.05f;
   float leftCommand = linear - angular;
@@ -136,18 +157,35 @@ void driveDifferential(float linear, float angular) {
     rightDir = -1;
   }
 
-  resetMotorOutputs();
+  uint32_t leftDuty = 0;
+  uint32_t rightDuty = 0;
+  if (leftDir != 0) {
+    leftDuty = percentToDuty(min(abs(leftCommand), 1.0f) * 100.0f) * motorSpeed / 255;
+  }
+  if (rightDir != 0) {
+    rightDuty = percentToDuty(min(abs(rightCommand), 1.0f) * 100.0f) * motorSpeed / 255;
+  }
 
   if (leftDir > 0) {
-    digitalWrite(MOTOR_L_FWD, HIGH);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM0Channel), 0);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM1Channel), leftDuty);
   } else if (leftDir < 0) {
-    digitalWrite(MOTOR_L_REV, HIGH);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM0Channel), leftDuty);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM1Channel), 0);
+  } else {
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM0Channel), 0);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorLeftM1Channel), 0);
   }
 
   if (rightDir > 0) {
-    digitalWrite(MOTOR_R_FWD, HIGH);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM0Channel), 0);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM1Channel), rightDuty);
   } else if (rightDir < 0) {
-    digitalWrite(MOTOR_R_REV, HIGH);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM0Channel), rightDuty);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM1Channel), 0);
+  } else {
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM0Channel), 0);
+    setMotorDuty(static_cast<ledc_channel_t>(kMotorRightM1Channel), 0);
   }
 
   motion.active = (leftDir != 0) || (rightDir != 0);
@@ -183,9 +221,15 @@ bool initCamera() {
 
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = currentFrameSize;
-  config.jpeg_quality = jpegQuality;
-  config.fb_count = 1;
+  if (psramFound()) {
+    config.frame_size = FRAMESIZE_UXGA;
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+  } else {
+    config.frame_size = FRAMESIZE_SVGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+  }
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -196,8 +240,12 @@ bool initCamera() {
 
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
+    currentFrameSize = FRAMESIZE_QVGA;
+    jpegQuality = config.jpeg_quality;
     s->set_framesize(s, currentFrameSize);
     s->set_quality(s, jpegQuality);
+    s->set_hmirror(s, 0);
+    s->set_vflip(s, 1);
   }
 
   logEvent("camera.ready");
@@ -361,11 +409,63 @@ void handleMotionDrive() {
 // =====================
 void setup() {
   Serial.begin(115200);
+  Serial.setDebugOutput(true);
 
-  pinMode(MOTOR_L_FWD, OUTPUT);
-  pinMode(MOTOR_L_REV, OUTPUT);
-  pinMode(MOTOR_R_FWD, OUTPUT);
-  pinMode(MOTOR_R_REV, OUTPUT);
+  ledc_timer_config_t ledc_timer = {
+    .speed_mode = LEDC_LOW_SPEED_MODE,
+    .duty_resolution = LEDC_TIMER_8_BIT,
+    .timer_num = LEDC_TIMER_1,
+    .freq_hz = kMotorPwmFrequency,
+    .clk_cfg = LEDC_AUTO_CLK
+  };
+  ledc_timer_config(&ledc_timer);
+
+  ledc_channel_config_t ledc_channel[4] = {
+    {
+      .gpio_num = MOTOR_LEFT_M0,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .channel = static_cast<ledc_channel_t>(kMotorLeftM0Channel),
+      .intr_type = LEDC_INTR_DISABLE,
+      .timer_sel = LEDC_TIMER_1,
+      .duty = 0,
+      .hpoint = 0
+    },
+    {
+      .gpio_num = MOTOR_LEFT_M1,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .channel = static_cast<ledc_channel_t>(kMotorLeftM1Channel),
+      .intr_type = LEDC_INTR_DISABLE,
+      .timer_sel = LEDC_TIMER_1,
+      .duty = 0,
+      .hpoint = 0
+    },
+    {
+      .gpio_num = MOTOR_RIGHT_M0,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .channel = static_cast<ledc_channel_t>(kMotorRightM0Channel),
+      .intr_type = LEDC_INTR_DISABLE,
+      .timer_sel = LEDC_TIMER_1,
+      .duty = 0,
+      .hpoint = 0
+    },
+    {
+      .gpio_num = MOTOR_RIGHT_M1,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .channel = static_cast<ledc_channel_t>(kMotorRightM1Channel),
+      .intr_type = LEDC_INTR_DISABLE,
+      .timer_sel = LEDC_TIMER_1,
+      .duty = 0,
+      .hpoint = 0
+    }
+  };
+
+  for (int i = 0; i < 4; i++) {
+    ledc_channel_config(&ledc_channel[i]);
+  }
+
+  pinMode(33, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   stopMotors();
 
