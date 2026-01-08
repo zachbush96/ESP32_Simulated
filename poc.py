@@ -1,5 +1,3 @@
-I've used Claude Code to generate the following code. Please review it, and point out any potential issues.
-
 import time
 import requests
 import threading
@@ -58,7 +56,7 @@ class RobotClient:
         try:
             res = requests.get(f"{self.base_url}/events", timeout=2)
             if res.status_code == 200:
-                return res.json().get("events",)
+                return res.json().get("events", [])
         except:
             return
         return
@@ -139,7 +137,7 @@ class SmartRobotBrain:
 
             # 2. Run Inference
             results = self.model(frame, verbose=False)
-            detections = results.boxes
+            detections = results[0].boxes
             
             target_box = None
             max_conf = 0.0
@@ -163,7 +161,7 @@ class SmartRobotBrain:
                 self.last_seen_time = current_time
                 
                 # Extract Box Geometry
-                x1, y1, x2, y2 = target_box.xyxy
+                x1, y1, x2, y2 = target_box.xyxy[0].tolist()
                 cx = (x1 + x2) / 2
                 cy = (y1 + y2) / 2
                 box_width = x2 - x1
@@ -264,7 +262,7 @@ def stop_robot() -> str:
 def read_logs() -> str:
     """Reads the latest system logs from the robot."""
     logs = robot.get_logs()
-    return "\n".join(logs)
+    return "\n".join(logs or [])
 
 # ===========================
 # GRADIO INTERFACE (STREAMING)
@@ -292,10 +290,10 @@ def start_gradio():
                     cv2.putText(frame, f"TARGET: {brain.target_class}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                     
                     # Optional: Draw boxes just for UI (Brain does this internally too)
-                    results = brain.model(frame, verbose=False)
+                    results = brain.model(frame, verbose=False)[0]
                     for box in results.boxes:
                         if brain.model.names[int(box.cls)] == brain.target_class:
-                            x1, y1, x2, y2 = map(int, box.xyxy)
+                            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 
                 # Convert BGR (OpenCV) to RGB (Gradio)
@@ -364,7 +362,7 @@ if __name__ == "__main__":
     print("Initializing System...")
     print("Loading AI Model (this may take a moment)...")
     # Trigger model load once at startup
-    _ = brain.model("[https://ultralytics.com/images/bus.jpg](https://ultralytics.com/images/bus.jpg)", verbose=False)
+    _ = brain.model("https://ultralytics.com/images/bus.jpg", verbose=False)
     print("Model Loaded!")
     
     start_gradio()
