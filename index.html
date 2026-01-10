@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ESP32 Robot Remote</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --muted: #7a8aa0;
+      --accent: #1da1ff;
+      --accent-2: #6ce2ff;
+      --shadow: 0 12px 30px rgba(20, 40, 90, 0.12);
+      --radius-lg: 26px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, rgba(90, 194, 255, 0.35), transparent 55%),
+        radial-gradient(circle at top right, rgba(118, 255, 211, 0.35), transparent 50%),
+        var(--bg);
+      min-height: 100vh;
+      color: #1f2a37;
+    }
+
+    .app {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 18px 18px 28px;
+      position: relative;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .status-icons {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: #1f2a37;
+    }
+
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .device-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .device-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: var(--shadow);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .camera-card {
+      padding: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .camera-feed {
+      width: 100%;
+      display: block;
+      aspect-ratio: 16 / 10;
+      background: #111;
+      object-fit: cover;
+    }
+
+    .camera-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      color: #e2f3ff;
+      font-size: 14px;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    }
+
+    .camera-toggle {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(29, 161, 255, 0.75);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 18px 0 12px;
+    }
+
+    .tab {
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 20px;
+      padding: 10px 4px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      display: grid;
+      gap: 6px;
+      align-items: center;
+      justify-items: center;
+      cursor: pointer;
+      border: none;
+    }
+
+    .tab.active {
+      background: linear-gradient(145deg, var(--accent-2), var(--accent));
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .tab svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .panel {
+      display: none;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .remote-pad {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .pad-center {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: #f2f6fb;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    .pad-center::before {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border-radius: 50%;
+      border: 10px solid #e9eef5;
+    }
+
+    .pad-button {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(20, 40, 90, 0.12);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+
+    .pad-button.center {
+      width: 56px;
+      height: 56px;
+      background: white;
+      border: 4px solid var(--accent);
+      z-index: 2;
+    }
+
+    .pad-up { top: 8px; }
+    .pad-down { bottom: 8px; }
+    .pad-left { left: 8px; }
+    .pad-right { right: 8px; }
+
+    .utility-btn {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+    }
+
+    .speed-card {
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: var(--radius-md);
+      background: #fff;
+    }
+
+    .speed-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .actions-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+      gap: 12px;
+    }
+
+    .action-card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 12px 8px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .action-card span {
+      display: block;
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .hero-card {
+      background: linear-gradient(110deg, #2a9bff, #84d9ff);
+      border-radius: 20px;
+      color: white;
+      padding: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    .hero-card small {
+      opacity: 0.8;
+    }
+
+    .hero-pill {
+      background: rgba(255, 255, 255, 0.25);
+      padding: 6px 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .photo-placeholder {
+      background: #fff;
+      border-radius: 16px;
+      height: 140px;
+      box-shadow: var(--shadow);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+    }
+
+    .voice-panel {
+      text-align: center;
+      padding: 24px 16px;
+    }
+
+    .mic-btn {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: linear-gradient(140deg, var(--accent-2), var(--accent));
+      border: none;
+      color: white;
+      font-size: 22px;
+      box-shadow: var(--shadow);
+      margin: 16px auto;
+      cursor: pointer;
+    }
+
+    .bottom-nav {
+      position: sticky;
+      bottom: 0;
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .bottom-nav button {
+      border: none;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 12px 0;
+      border-radius: 14px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .bottom-nav button.active {
+      background: #e5ecf6;
+      color: #1f2a37;
+    }
+
+    .settings-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.4);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 18px;
+      z-index: 20;
+    }
+
+    .settings-modal.active {
+      display: flex;
+    }
+
+    .settings-sheet {
+      background: #fff;
+      border-radius: 24px;
+      padding: 18px;
+      width: 100%;
+      max-width: 420px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow);
+    }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .settings-group {
+      margin-bottom: 16px;
+    }
+
+    .settings-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .settings-group input,
+    .settings-group select,
+    .settings-group textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #d9e1ee;
+      padding: 10px 12px;
+    }
+
+    .settings-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .primary-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ghost-btn {
+      background: #f1f5fb;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .log-box {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      min-height: 120px;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 380px) {
+      .pad-center {
+        width: 150px;
+        height: 150px;
+      }
+
+      .mic-btn {
+        width: 100px;
+        height: 100px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="status-bar">
+      <div id="time-display">8:20</div>
+      <div class="status-icons">
+        <span>📶</span>
+        <span>🔋 80%</span>
+      </div>
+    </div>
+
+    <div class="device-row">
+      <div class="device-name">
+        EBO-539 <span>▾</span>
+      </div>
+      <div class="device-actions">
+        <button class="icon-btn" id="alerts-btn" aria-label="notifications">
+          🔔
+        </button>
+        <button class="icon-btn" id="settings-btn" aria-label="settings">
+          ⚙️
+        </button>
+      </div>
+    </div>
+
+    <div class="card camera-card">
+      <img id="camera-feed" class="camera-feed" src="" alt="Camera feed" />
+      <div class="camera-overlay">
+        <div>📶 <span id="stream-quality">Excellent</span></div>
+        <div><span id="stream-rate">--</span> KB/s</div>
+      </div>
+      <div class="camera-toggle">
+        <span>Stream</span>
+        <label>
+          <input type="checkbox" id="stream-toggle" checked />
+        </label>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="remote" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M7 14l-4 4m4-4h4m-4 0v-4" />
+          <rect x="12" y="4" width="8" height="8" rx="2" />
+        </svg>
+        Remote
+      </button>
+      <button class="tab" data-tab="play" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polygon points="8,5 19,12 8,19" />
+        </svg>
+        Play
+      </button>
+      <button class="tab" data-tab="photo" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="6" width="18" height="14" rx="2" />
+          <circle cx="9" cy="12" r="3" />
+        </svg>
+        Photo
+      </button>
+      <button class="tab" data-tab="voice" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 4v8" />
+          <path d="M8 12a4 4 0 008 0" />
+          <path d="M5 12a7 7 0 0014 0" />
+        </svg>
+        Voice
+      </button>
+    </div>
+
+    <div class="panel active" id="panel-remote" role="tabpanel">
+      <div class="card">
+        <div class="remote-pad">
+          <button class="utility-btn" data-action="spin" aria-label="spin">🔄</button>
+          <div class="pad-center">
+            <button class="pad-button pad-up" data-move="forward" aria-label="forward">▲</button>
+            <button class="pad-button pad-left" data-move="left" aria-label="left">◀</button>
+            <button class="pad-button center" data-move="stop" aria-label="stop">●</button>
+            <button class="pad-button pad-right" data-move="right" aria-label="right">▶</button>
+            <button class="pad-button pad-down" data-move="backward" aria-label="backward">▼</button>
+          </div>
+          <button class="utility-btn" data-action="dock" aria-label="dock">⚡</button>
+        </div>
+
+        <div class="speed-card">
+          <div class="speed-header">
+            <span>Movement Speed</span>
+            <span id="speed-value">66</span>
+          </div>
+          <input id="speed-slider" type="range" min="0" max="100" value="66" />
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-play" role="tabpanel">
+      <div class="card">
+        <div class="speed-header">
+          <span>Robot Action</span>
+          <label>
+            <input type="checkbox" id="action-toggle" checked />
+            ON
+          </label>
+        </div>
+        <div class="actions-list">
+          <div class="action-card" data-sequence="spin"><span>🌀</span>Spin</div>
+          <div class="action-card" data-sequence="race"><span>🏎️</span>Race</div>
+          <div class="action-card" data-sequence="excited"><span>🤩</span>Excited</div>
+          <div class="action-card" data-sequence="relaxed"><span>😌</span>Relaxed</div>
+          <div class="action-card" data-sequence="patrol"><span>🧭</span>Patrol</div>
+        </div>
+        <div class="hero-card">
+          <div>
+            <h3 style="margin: 0 0 6px;">E-pet</h3>
+            <small>Robot tags along</small>
+            <div class="hero-pill">▶ Auto Follow</div>
+          </div>
+          <div style="font-size: 42px;">🤖</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-photo" role="tabpanel">
+      <div class="card">
+        <div class="speed-header">
+          <span>Snapshots</span>
+          <button class="primary-btn" id="snap-btn">Capture</button>
+        </div>
+        <div class="photo-grid" id="photo-grid">
+          <div class="photo-placeholder">No photos yet</div>
+          <div class="photo-placeholder">Waiting...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-voice" role="tabpanel">
+      <div class="card voice-panel">
+        <h3>Voice Chat</h3>
+        <p style="color: var(--muted);">Hold the mic to send voice commands.</p>
+        <button class="mic-btn" id="mic-btn">🎙️</button>
+        <div id="voice-status">Idle</div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="active">Home</button>
+      <button>Discover</button>
+      <button>For Me</button>
+    </div>
+  </div>
+
+  <div class="settings-modal" id="settings-modal" aria-hidden="true">
+    <div class="settings-sheet">
+      <div class="settings-header">
+        <h3 style="margin: 0;">Settings & Diagnostics</h3>
+        <button class="ghost-btn" id="close-settings">Close</button>
+      </div>
+
+      <div class="settings-group">
+        <label for="ip-input">Robot IP / Base URL</label>
+        <input id="ip-input" type="text" value="http://192.168.4.1" />
+      </div>
+
+      <div class="settings-actions">
+        <button class="primary-btn" id="save-ip">Save</button>
+        <button class="ghost-btn" id="test-connection">Test Connection</button>
+        <button class="ghost-btn" id="refresh-logs">Refresh Logs</button>
+      </div>
+
+      <div class="settings-group">
+        <label for="stream-path">Camera Stream Path</label>
+        <input id="stream-path" type="text" value="/camera/stream" />
+      </div>
+
+      <div class="settings-group">
+        <label for="drive-mode">Drive Mode</label>
+        <select id="drive-mode">
+          <option value="direct">Direct (default)</option>
+          <option value="smooth">Smooth steering</option>
+          <option value="tank">Tank steering</option>
+        </select>
+      </div>
+
+      <div class="settings-group">
+        <label for="log-output">Robot Logs</label>
+        <div id="log-output" class="log-box">No logs yet.</div>
+      </div>
+
+      <div class="settings-group">
+        <label>Advanced</label>
+        <div class="settings-actions">
+          <button class="ghost-btn" id="toggle-headlights">Toggle Headlights</button>
+          <button class="ghost-btn" id="toggle-audio">Toggle Audio</button>
+          <button class="ghost-btn" id="restart-robot">Restart Robot</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      baseUrl: localStorage.getItem("robotBaseUrl") || "http://192.168.4.1",
+      streamPath: localStorage.getItem("robotStreamPath") || "/camera/stream",
+      speed: 66,
+      isStreaming: true
+    };
+
+    const tabButtons = document.querySelectorAll(".tab");
+    const panels = document.querySelectorAll(".panel");
+    const speedSlider = document.getElementById("speed-slider");
+    const speedValue = document.getElementById("speed-value");
+    const cameraFeed = document.getElementById("camera-feed");
+    const streamToggle = document.getElementById("stream-toggle");
+    const ipInput = document.getElementById("ip-input");
+    const streamPathInput = document.getElementById("stream-path");
+    const logOutput = document.getElementById("log-output");
+
+    function updateCameraSrc() {
+      if (!state.isStreaming) {
+        cameraFeed.src = "";
+        return;
+      }
+      const url = `${state.baseUrl}${state.streamPath}`;
+      cameraFeed.src = url;
+    }
+
+    function updateSpeed(value) {
+      state.speed = Number(value);
+      speedValue.textContent = state.speed;
+    }
+
+    function setActiveTab(target) {
+      tabButtons.forEach((button) => {
+        const isActive = button.dataset.tab === target;
+        button.classList.toggle("active", isActive);
+      });
+      panels.forEach((panel) => {
+        panel.classList.toggle("active", panel.id === `panel-${target}`);
+      });
+    }
+
+    async function sendMotion(linear, angular) {
+      const payload = { linear, angular };
+      try {
+        await fetch(`${state.baseUrl}/motion/drive`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        console.error("Drive error", error);
+      }
+    }
+
+    async function sendStop() {
+      try {
+        await fetch(`${state.baseUrl}/motion/stop`, { method: "POST" });
+      } catch (error) {
+        console.error("Stop error", error);
+      }
+    }
+
+    function driveCommand(direction) {
+      const speed = state.speed / 100;
+      const angularScale = 1;
+      switch (direction) {
+        case "forward":
+          return sendMotion(speed, 0);
+        case "backward":
+          return sendMotion(-speed, 0);
+        case "left":
+          return sendMotion(0, -angularScale * speed);
+        case "right":
+          return sendMotion(0, angularScale * speed);
+        case "stop":
+        default:
+          return sendStop();
+      }
+    }
+
+    function bindPadButtons() {
+      const padButtons = document.querySelectorAll(".pad-button");
+      padButtons.forEach((button) => {
+        const direction = button.dataset.move;
+        button.addEventListener("pointerdown", () => driveCommand(direction));
+        button.addEventListener("pointerup", () => sendStop());
+        button.addEventListener("pointerleave", () => sendStop());
+      });
+    }
+
+    async function triggerAction(actionName) {
+      const payload = { action: actionName };
+      try {
+        await fetch(`${state.baseUrl}/actions/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        console.error("Action error", error);
+      }
+    }
+
+    async function testConnection() {
+      try {
+        const response = await fetch(`${state.baseUrl}/health`);
+        const data = await response.json();
+        logOutput.textContent = `Health check OK:\n${JSON.stringify(data, null, 2)}`;
+      } catch (error) {
+        logOutput.textContent = `Connection failed: ${error}`;
+      }
+    }
+
+    async function refreshLogs() {
+      try {
+        const response = await fetch(`${state.baseUrl}/events`);
+        const data = await response.json();
+        logOutput.textContent = `Events:\n${JSON.stringify(data, null, 2)}`;
+      } catch (error) {
+        logOutput.textContent = `Unable to fetch logs: ${error}`;
+      }
+    }
+
+    document.getElementById("settings-btn").addEventListener("click", () => {
+      document.getElementById("settings-modal").classList.add("active");
+      document.getElementById("settings-modal").setAttribute("aria-hidden", "false");
+    });
+
+    document.getElementById("close-settings").addEventListener("click", () => {
+      document.getElementById("settings-modal").classList.remove("active");
+      document.getElementById("settings-modal").setAttribute("aria-hidden", "true");
+    });
+
+    document.getElementById("save-ip").addEventListener("click", () => {
+      state.baseUrl = ipInput.value.trim() || state.baseUrl;
+      state.streamPath = streamPathInput.value.trim() || state.streamPath;
+      localStorage.setItem("robotBaseUrl", state.baseUrl);
+      localStorage.setItem("robotStreamPath", state.streamPath);
+      updateCameraSrc();
+      logOutput.textContent = `Saved base URL: ${state.baseUrl}`;
+    });
+
+    document.getElementById("test-connection").addEventListener("click", testConnection);
+    document.getElementById("refresh-logs").addEventListener("click", refreshLogs);
+
+    document.getElementById("toggle-headlights").addEventListener("click", () => {
+      triggerAction("headlights");
+    });
+
+    document.getElementById("toggle-audio").addEventListener("click", () => {
+      triggerAction("audio");
+    });
+
+    document.getElementById("restart-robot").addEventListener("click", () => {
+      triggerAction("restart");
+    });
+
+    document.querySelectorAll(".action-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        triggerAction(card.dataset.sequence);
+      });
+    });
+
+    document.querySelectorAll(".utility-btn").forEach((button) => {
+      button.addEventListener("click", () => {
+        triggerAction(button.dataset.action);
+      });
+    });
+
+    speedSlider.addEventListener("input", (event) => updateSpeed(event.target.value));
+
+    streamToggle.addEventListener("change", (event) => {
+      state.isStreaming = event.target.checked;
+      updateCameraSrc();
+    });
+
+    tabButtons.forEach((button) => {
+      button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+    });
+
+    document.getElementById("snap-btn").addEventListener("click", async () => {
+      const img = document.createElement("img");
+      img.src = `${state.baseUrl}/camera/frame?${Date.now()}`;
+      img.style.width = "100%";
+      img.style.borderRadius = "14px";
+      const grid = document.getElementById("photo-grid");
+      grid.prepend(img);
+    });
+
+    document.getElementById("mic-btn").addEventListener("pointerdown", () => {
+      document.getElementById("voice-status").textContent = "Listening...";
+    });
+
+    document.getElementById("mic-btn").addEventListener("pointerup", () => {
+      document.getElementById("voice-status").textContent = "Sent!";
+    });
+
+    function updateTime() {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes().toString().padStart(2, "0");
+      document.getElementById("time-display").textContent = `${hours}:${minutes}`;
+    }
+
+    ipInput.value = state.baseUrl;
+    streamPathInput.value = state.streamPath;
+    updateSpeed(speedSlider.value);
+    updateCameraSrc();
+    bindPadButtons();
+    updateTime();
+    setInterval(updateTime, 60000);
+  </script>
+</body>
+</html>
